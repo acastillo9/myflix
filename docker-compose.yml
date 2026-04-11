@@ -1,0 +1,369 @@
+# MyFlix — Self-hosted Media Server Stack
+#
+# Phase 0 (ephemeral, <50 GB):  docker compose up -d
+# Phase 1 (full, with storage):  docker compose --profile full up -d
+#
+# All services communicate by container name on the "myflix" bridge network.
+# No IP addresses needed for inter-service connections.
+
+services:
+  # ===========================================================================
+  # MEDIA SERVER
+  # ===========================================================================
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - JELLYFIN_PublishedServerUrl=http://localhost:${JELLYFIN_PORT:-8096}
+    volumes:
+      - ${APPDATA_ROOT}/jellyfin/config:/config
+      - ${APPDATA_ROOT}/jellyfin/cache:/cache
+      - ${DATA_ROOT}/media:/data/media
+      - ${DATA_ROOT}/downloads/torrents:/data/downloads:ro
+    ports:
+      - ${JELLYFIN_PORT:-8096}:8096
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # REQUEST UI
+  # ===========================================================================
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_ROOT}/seerr:/app/config
+    ports:
+      - ${SEERR_PORT:-5055}:5055
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5055/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # CONTENT MANAGERS (*arr apps)
+  # ===========================================================================
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ${APPDATA_ROOT}/radarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - ${RADARR_PORT:-7878}:7878
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ${APPDATA_ROOT}/sonarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - ${SONARR_PORT:-8989}:8989
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8989/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    profiles:
+      - full
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ${APPDATA_ROOT}/lidarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - ${LIDARR_PORT:-8686}:8686
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8686/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  readarr:
+    image: lscr.io/linuxserver/readarr:develop
+    container_name: readarr
+    profiles:
+      - full
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ${APPDATA_ROOT}/readarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - ${READARR_PORT:-8787}:8787
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # BOOK READER
+  # ===========================================================================
+  kavita:
+    image: jvmilazz0/kavita:latest
+    container_name: kavita
+    profiles:
+      - full
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_ROOT}/kavita:/kavita/config
+      - ${DATA_ROOT}/media/books:/data/books
+    ports:
+      - ${KAVITA_PORT:-5000}:5000
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # INDEXER MANAGEMENT
+  # ===========================================================================
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ${APPDATA_ROOT}/prowlarr:/config
+    ports:
+      - ${PROWLARR_PORT:-9696}:9696
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9696/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - TZ=${TZ}
+      - LOG_LEVEL=info
+    ports:
+      - ${FLARESOLVERR_PORT:-8191}:8191
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8191"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ===========================================================================
+  # SUBTITLES
+  # ===========================================================================
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ${APPDATA_ROOT}/bazarr:/config
+      - ${DATA_ROOT}/media:/data/media
+    ports:
+      - ${BAZARR_PORT:-6767}:6767
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6767/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # DOWNLOAD CLIENT
+  # ===========================================================================
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+      - WEBUI_PORT=${QBIT_WEBUI_PORT:-8085}
+    volumes:
+      - ${APPDATA_ROOT}/qbittorrent:/config
+      - ${DATA_ROOT}/downloads:/data/downloads
+    ports:
+      - ${QBIT_WEBUI_PORT:-8085}:${QBIT_WEBUI_PORT:-8085}
+      - ${QBIT_TORRENT_PORT:-6881}:6881
+      - ${QBIT_TORRENT_PORT:-6881}:6881/udp
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${QBIT_WEBUI_PORT:-8085}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # AUTO-UPDATER
+  # ===========================================================================
+  watchtower:
+    image: ghcr.io/containrrr/watchtower:latest
+    container_name: watchtower
+    environment:
+      - TZ=${TZ}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=${WATCHTOWER_POLL_INTERVAL:-86400}
+      - WATCHTOWER_INCLUDE_STOPPED=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+# =============================================================================
+# NETWORK
+# =============================================================================
+networks:
+  myflix:
+    name: myflix
+    driver: bridge

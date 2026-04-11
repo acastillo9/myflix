@@ -1,0 +1,9 @@
+# Environment config (contains your specific UID/GID/paths)
+.env
+
+# Container persistent data
+appdata/
+
+# OS files
+.DS_Store
+Thumbs.db
