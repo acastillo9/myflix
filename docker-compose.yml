@@ -20,6 +20,10 @@ services:
       - ${APPDATA_ROOT}/jellyfin/cache:/cache
       - ${DATA_ROOT}/media:/data/media
       - ${DATA_ROOT}/downloads/torrents:/data/downloads:ro
+    devices:
+      - /dev/dri/renderD129:/dev/dri/renderD129  # AMD VAAPI hardware transcoding
+    group_add:
+      - "987"  # render group GID — allows access to /dev/dri/renderD128
     ports:
       - ${JELLYFIN_PORT:-8096}:8096
     networks:
@@ -33,12 +37,20 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '6.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # ===========================================================================
   # REQUEST UI
   # ===========================================================================
   seerr:
-    image: ghcr.io/seerr-team/seerr:latest
+    image: fallenbagel/jellyseerr:latest
     container_name: seerr
     environment:
       - TZ=${TZ}
@@ -57,6 +69,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
   # ===========================================================================
   # CONTENT MANAGERS (*arr apps)
@@ -91,6 +111,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    depends_on:
+      prowlarr:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_healthy
 
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
@@ -122,6 +155,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    depends_on:
+      prowlarr:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_healthy
 
   lidarr:
     image: lscr.io/linuxserver/lidarr:latest
@@ -155,12 +201,25 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    depends_on:
+      prowlarr:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_healthy
 
   readarr:
-    image: lscr.io/linuxserver/readarr:develop
+    image: lscr.io/linuxserver/readarr:nightly
     container_name: readarr
     profiles:
-      - full
+      - readarr  # changed from "full" — image has no amd64 build; re-enable when fixed
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -188,6 +247,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    depends_on:
+      prowlarr:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_healthy
 
   # ===========================================================================
   # BOOK READER
@@ -215,6 +287,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
   # ===========================================================================
   # INDEXER MANAGEMENT
@@ -248,6 +328,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
@@ -268,6 +356,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
   # ===========================================================================
   # SUBTITLES
@@ -302,6 +398,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    depends_on:
+      radarr:
+        condition: service_healthy
+      sonarr:
+        condition: service_healthy
 
   # ===========================================================================
   # DOWNLOAD CLIENT
@@ -340,6 +449,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
   # ===========================================================================
   # AUTO-UPDATER
@@ -352,6 +469,7 @@ services:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=${WATCHTOWER_POLL_INTERVAL:-86400}
       - WATCHTOWER_INCLUDE_STOPPED=true
+      - DOCKER_API_VERSION=1.45
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -359,6 +477,14 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
 # =============================================================================
 # NETWORK

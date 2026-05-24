@@ -1,0 +1,37 @@
+# Log Rotation Configuration — TEMPLATE FILE
+# Do NOT copy this file directly. Use setup-logrotate.sh to install it.
+# The script uses envsubst to expand ${DATA_ROOT} and ${PUID}/${PGID} from .env.
+
+# MyFlix application logs
+${DATA_ROOT}/logs/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 ${PUID} ${PGID}
+}
+
+# Backup logs
+${DATA_ROOT}/backups/*.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 ${PUID} ${PGID}
+}
+
+# Docker container logs (if logging to file)
+# These are handled by Docker's built-in log rotation, but you can configure them here too
+/var/lib/docker/containers/*/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 root root
+}

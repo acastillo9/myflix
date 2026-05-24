@@ -1,0 +1,208 @@
+# MyFlix — Docker Compose Override with Traefik Reverse Proxy
+#
+# This file extends docker-compose.yml with Traefik reverse proxy for HTTPS.
+# It's loaded automatically by docker compose when present — the Traefik labels
+# below are harmless when Traefik is not running (containers simply ignore them).
+#
+# To enable HTTPS:
+#   1. Update DOMAIN and TRAEFIK_ACME_EMAIL in .env
+#   2. Ensure ports 80 and 443 are open on your server
+#   3. Start with the traefik profile:
+#        docker compose --profile traefik up -d
+#        docker compose --profile full --profile traefik up -d   # Phase 1
+#
+# Services will be available at:
+#   https://jellyfin.yourdomain.com
+#   https://seerr.yourdomain.com
+#   https://radarr.yourdomain.com
+#   etc.
+
+services:
+  # ===========================================================================
+  # REVERSE PROXY
+  # ===========================================================================
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    profiles:
+      - traefik
+    command:
+      # API and Dashboard (served via HTTPS only — do not enable insecure in production)
+      - --api.dashboard=true
+      - --api.insecure=false
+
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+
+      # Providers
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=myflix
+
+      # Let's Encrypt
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+
+      # Logging
+      - --log.level=INFO
+      - --accesslog=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${DATA_ROOT}/letsencrypt:/letsencrypt
+    networks:
+      - myflix
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # MEDIA SERVER
+  # ===========================================================================
+  jellyfin:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.${DOMAIN}`)"
+      - "traefik.http.routers.jellyfin.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin.tls.certresolver=letsencrypt"
+      - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
+      - "traefik.http.routers.jellyfin-http.rule=Host(`jellyfin.${DOMAIN}`)"
+      - "traefik.http.routers.jellyfin-http.entrypoints=web"
+      - "traefik.http.middlewares.jellyfin-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.jellyfin-http.middlewares=jellyfin-https"
+
+  # ===========================================================================
+  # REQUEST UI
+  # ===========================================================================
+  seerr:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.seerr.rule=Host(`seerr.${DOMAIN}`)"
+      - "traefik.http.routers.seerr.entrypoints=websecure"
+      - "traefik.http.routers.seerr.tls.certresolver=letsencrypt"
+      - "traefik.http.services.seerr.loadbalancer.server.port=5055"
+      - "traefik.http.routers.seerr-http.rule=Host(`seerr.${DOMAIN}`)"
+      - "traefik.http.routers.seerr-http.entrypoints=web"
+      - "traefik.http.middlewares.seerr-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.seerr-http.middlewares=seerr-https"
+
+  # ===========================================================================
+  # CONTENT MANAGERS (*arr apps)
+  # ===========================================================================
+  radarr:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.${DOMAIN}`)"
+      - "traefik.http.routers.radarr.entrypoints=websecure"
+      - "traefik.http.routers.radarr.tls.certresolver=letsencrypt"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+      - "traefik.http.routers.radarr-http.rule=Host(`radarr.${DOMAIN}`)"
+      - "traefik.http.routers.radarr-http.entrypoints=web"
+      - "traefik.http.middlewares.radarr-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.radarr-http.middlewares=radarr-https"
+
+  sonarr:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.${DOMAIN}`)"
+      - "traefik.http.routers.sonarr.entrypoints=websecure"
+      - "traefik.http.routers.sonarr.tls.certresolver=letsencrypt"
+      - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
+      - "traefik.http.routers.sonarr-http.rule=Host(`sonarr.${DOMAIN}`)"
+      - "traefik.http.routers.sonarr-http.entrypoints=web"
+      - "traefik.http.middlewares.sonarr-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.sonarr-http.middlewares=sonarr-https"
+
+  lidarr:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidarr.rule=Host(`lidarr.${DOMAIN}`)"
+      - "traefik.http.routers.lidarr.entrypoints=websecure"
+      - "traefik.http.routers.lidarr.tls.certresolver=letsencrypt"
+      - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
+      - "traefik.http.routers.lidarr-http.rule=Host(`lidarr.${DOMAIN}`)"
+      - "traefik.http.routers.lidarr-http.entrypoints=web"
+      - "traefik.http.middlewares.lidarr-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.lidarr-http.middlewares=lidarr-https"
+
+  readarr:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.readarr.rule=Host(`readarr.${DOMAIN}`)"
+      - "traefik.http.routers.readarr.entrypoints=websecure"
+      - "traefik.http.routers.readarr.tls.certresolver=letsencrypt"
+      - "traefik.http.services.readarr.loadbalancer.server.port=8787"
+      - "traefik.http.routers.readarr-http.rule=Host(`readarr.${DOMAIN}`)"
+      - "traefik.http.routers.readarr-http.entrypoints=web"
+      - "traefik.http.middlewares.readarr-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.readarr-http.middlewares=readarr-https"
+
+  # ===========================================================================
+  # BOOK READER
+  # ===========================================================================
+  kavita:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kavita.rule=Host(`kavita.${DOMAIN}`)"
+      - "traefik.http.routers.kavita.entrypoints=websecure"
+      - "traefik.http.routers.kavita.tls.certresolver=letsencrypt"
+      - "traefik.http.services.kavita.loadbalancer.server.port=5000"
+      - "traefik.http.routers.kavita-http.rule=Host(`kavita.${DOMAIN}`)"
+      - "traefik.http.routers.kavita-http.entrypoints=web"
+      - "traefik.http.middlewares.kavita-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.kavita-http.middlewares=kavita-https"
+
+  # ===========================================================================
+  # INDEXER MANAGEMENT
+  # ===========================================================================
+  prowlarr:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${DOMAIN}`)"
+      - "traefik.http.routers.prowlarr.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr.tls.certresolver=letsencrypt"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+      - "traefik.http.routers.prowlarr-http.rule=Host(`prowlarr.${DOMAIN}`)"
+      - "traefik.http.routers.prowlarr-http.entrypoints=web"
+      - "traefik.http.middlewares.prowlarr-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.prowlarr-http.middlewares=prowlarr-https"
+
+  # ===========================================================================
+  # SUBTITLES
+  # ===========================================================================
+  bazarr:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bazarr.rule=Host(`bazarr.${DOMAIN}`)"
+      - "traefik.http.routers.bazarr.entrypoints=websecure"
+      - "traefik.http.routers.bazarr.tls.certresolver=letsencrypt"
+      - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
+      - "traefik.http.routers.bazarr-http.rule=Host(`bazarr.${DOMAIN}`)"
+      - "traefik.http.routers.bazarr-http.entrypoints=web"
+      - "traefik.http.middlewares.bazarr-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.bazarr-http.middlewares=bazarr-https"
+
+  # ===========================================================================
+  # DOWNLOAD CLIENT
+  # ===========================================================================
+  qbittorrent:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${DOMAIN}`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=websecure"
+      - "traefik.http.routers.qbittorrent.tls.certresolver=letsencrypt"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=${QBIT_WEBUI_PORT:-8085}"
+      - "traefik.http.routers.qbittorrent-http.rule=Host(`qbittorrent.${DOMAIN}`)"
+      - "traefik.http.routers.qbittorrent-http.entrypoints=web"
+      - "traefik.http.middlewares.qbittorrent-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.qbittorrent-http.middlewares=qbittorrent-https"
